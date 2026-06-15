@@ -26,6 +26,8 @@ services:
     build:
       context: .
 
+    image: pokss132/room-scheduling-server:v1.0.0
+
     env_file:
       - .env
 
