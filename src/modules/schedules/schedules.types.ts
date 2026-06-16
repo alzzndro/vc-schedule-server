@@ -2,6 +2,8 @@ export interface Schedule {
   id: string;
   room_id: string;
   room_name?: string; // Opt joined room name
+  section_id: string;
+  section_name?: string; // Opt joined section name
   subject: string;
   teacher: string;
   day_of_week: number; // 1 = Monday, 6 = Saturday
@@ -14,6 +16,7 @@ export interface Schedule {
 
 export interface CreateScheduleInput {
   room_id: string;
+  section_id: string;
   subject: string;
   teacher: string;
   day_of_week: number;
@@ -24,6 +27,7 @@ export interface CreateScheduleInput {
 
 export interface UpdateScheduleInput {
   room_id?: string;
+  section_id?: string;
   subject?: string;
   teacher?: string;
   day_of_week?: number;

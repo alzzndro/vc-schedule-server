@@ -1,6 +1,7 @@
 import { SchedulesRepository } from "./schedules.repository.js";
 import { CreateScheduleInput, UpdateScheduleInput } from "./schedules.types.js";
 import { RoomsService } from "../rooms/rooms.service.js";
+import { SectionsService } from "../sections/sections.service.js";
 import { ApiError, notFound } from "../../utils/errors.js";
 
 // Utility to convert time string (HH:MM or HH:MM:SS) to minutes since midnight
@@ -16,6 +17,9 @@ const timeToMinutes = (timeStr: string): number => {
   }
   return hours * 60 + minutes;
 };
+
+// Helper to format TIME string (e.g. "08:00:00") to human readable form (e.g. "08:00")
+const formatTimeStr = (t: string) => t.substring(0, 5);
 
 export class SchedulesService {
   static async getAllSchedules() {
@@ -37,10 +41,11 @@ export class SchedulesService {
   }
 
   static async createSchedule(data: CreateScheduleInput) {
-    const { room_id, subject, teacher, day_of_week, start_time, end_time } = data;
+    const { room_id, section_id, subject, teacher, day_of_week, start_time, end_time } = data;
 
-    // 1. Verify classroom exists
+    // 1. Verify classroom and section exist
     const room = await RoomsService.getRoomById(room_id);
+    const section = await SectionsService.getSectionById(section_id);
 
     // 2. Validate day of week (1=Mon, 6=Sat)
     if (day_of_week < 1 || day_of_week > 6) {
@@ -65,20 +70,31 @@ export class SchedulesService {
       throw new ApiError("Schedule start time must be before end time", 400);
     }
 
-    // 4. Conflict detection: Check for overlapping schedules in the same room on the same day
+    // 4. Conflict detection: Check for overlapping schedules in the same room OR same section on the same day
     const conflicts = await SchedulesRepository.findOverlapping(
       room_id,
       day_of_week,
       start_time,
-      end_time
+      end_time,
+      null,
+      section_id
     );
 
     if (conflicts.length > 0) {
-      const conflict = conflicts[0];
-      throw new ApiError(
-        `Schedule conflict detected in ${room.name} on day ${day_of_week}: already booked for '${conflict.subject}' (${conflict.start_time} - ${conflict.end_time}) by teacher '${conflict.teacher}'`,
-        400
-      );
+      for (const conflict of conflicts) {
+        if (conflict.room_id === room_id) {
+          throw new ApiError(
+            `Schedule conflict: Classroom '${room.name}' is already booked for '${conflict.subject}' (${formatTimeStr(conflict.start_time)} - ${formatTimeStr(conflict.end_time)}) by teacher '${conflict.teacher}'`,
+            400
+          );
+        }
+        if (conflict.section_id === section_id) {
+          throw new ApiError(
+            `Section conflict: Section '${section.name}' is already booked in ${conflict.room_name} for '${conflict.subject}' (${formatTimeStr(conflict.start_time)} - ${formatTimeStr(conflict.end_time)})`,
+            400
+          );
+        }
+      }
     }
 
     return SchedulesRepository.create(data);
@@ -90,6 +106,7 @@ export class SchedulesService {
 
     // Determine final values after update
     const finalRoomId = data.room_id !== undefined ? data.room_id : existingSchedule.room_id;
+    const finalSectionId = data.section_id !== undefined ? data.section_id : existingSchedule.section_id;
     const finalDayOfWeek = data.day_of_week !== undefined ? data.day_of_week : existingSchedule.day_of_week;
     const finalStartTime = data.start_time !== undefined ? data.start_time : existingSchedule.start_time;
     const finalEndTime = data.end_time !== undefined ? data.end_time : existingSchedule.end_time;
@@ -99,6 +116,13 @@ export class SchedulesService {
     if (data.room_id !== undefined && data.room_id !== existingSchedule.room_id) {
       const room = await RoomsService.getRoomById(data.room_id);
       roomName = room.name;
+    }
+
+    // Validate section if changed
+    let sectionName = existingSchedule.section_name;
+    if (data.section_id !== undefined && data.section_id !== existingSchedule.section_id) {
+      const section = await SectionsService.getSectionById(data.section_id);
+      sectionName = section.name;
     }
 
     // Validate day of week
@@ -130,15 +154,25 @@ export class SchedulesService {
       finalDayOfWeek,
       finalStartTime,
       finalEndTime,
-      id
+      id,
+      finalSectionId
     );
 
     if (conflicts.length > 0) {
-      const conflict = conflicts[0];
-      throw new ApiError(
-        `Schedule conflict detected in ${roomName} on day ${finalDayOfWeek}: already booked for '${conflict.subject}' (${conflict.start_time} - ${conflict.end_time}) by teacher '${conflict.teacher}'`,
-        400
-      );
+      for (const conflict of conflicts) {
+        if (conflict.room_id === finalRoomId) {
+          throw new ApiError(
+            `Schedule conflict: Classroom '${roomName}' is already booked for '${conflict.subject}' (${formatTimeStr(conflict.start_time)} - ${formatTimeStr(conflict.end_time)}) by teacher '${conflict.teacher}'`,
+            400
+          );
+        }
+        if (conflict.section_id === finalSectionId) {
+          throw new ApiError(
+            `Section conflict: Section '${sectionName}' is already booked in ${conflict.room_name} for '${conflict.subject}' (${formatTimeStr(conflict.start_time)} - ${formatTimeStr(conflict.end_time)})`,
+            400
+          );
+        }
+      }
     }
 
     const updated = await SchedulesRepository.update(id, data);

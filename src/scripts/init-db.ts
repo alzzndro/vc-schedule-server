@@ -35,7 +35,32 @@ const seedDatabase = async () => {
       );
     `);
 
-    // 4. Create schedules table with room overlap constraint
+    // 4. Create sections table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sections (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR(100) UNIQUE NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // Seed Default Section if it doesn't exist
+    const defaultSectionCheck = await client.query(`SELECT id FROM sections WHERE name = $1`, ["Default Section"]);
+    let defaultSectionId: string;
+    if (defaultSectionCheck.rows.length === 0) {
+      const defaultSecRes = await client.query(`
+        INSERT INTO sections (name)
+        VALUES ($1)
+        RETURNING id
+      `, ["Default Section"]);
+      defaultSectionId = defaultSecRes.rows[0].id;
+      console.log("✅ Seeded default section: Default Section");
+    } else {
+      defaultSectionId = defaultSectionCheck.rows[0].id;
+    }
+
+    // 5. Create schedules table
     await client.query(`
       CREATE TABLE IF NOT EXISTS schedules (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -50,6 +75,37 @@ const seedDatabase = async () => {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
+
+    // Perform safe migration for schedules to add section_id
+    const sectionIdCheck = await client.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'schedules' AND column_name = 'section_id'
+    `);
+
+    if (sectionIdCheck.rows.length === 0) {
+      console.log("⏳ Migrating schedules table: adding section_id...");
+      // Add section_id as nullable first
+      await client.query(`ALTER TABLE schedules ADD COLUMN section_id UUID;`);
+      
+      // Set existing rows to point to default section
+      await client.query(`UPDATE schedules SET section_id = $1 WHERE section_id IS NULL;`, [defaultSectionId]);
+      
+      // Alter column to be NOT NULL
+      await client.query(`ALTER TABLE schedules ALTER COLUMN section_id SET NOT NULL;`);
+      
+      // Add foreign key constraint
+      await client.query(`
+        ALTER TABLE schedules 
+        ADD CONSTRAINT schedules_section_id_fkey 
+        FOREIGN KEY (section_id) REFERENCES sections(id) ON DELETE CASCADE;
+      `);
+      console.log("✅ Migration successful: section_id column added to schedules table.");
+    }
+
+    // Indexes
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_schedules_room_day ON schedules(room_id, day_of_week);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_schedules_section_day ON schedules(section_id, day_of_week);`);
 
     // 5. Check if admin exists, if not seed it
     const adminCheck = await client.query(`SELECT * FROM users WHERE email = $1`, ["admin@school.edu"]);

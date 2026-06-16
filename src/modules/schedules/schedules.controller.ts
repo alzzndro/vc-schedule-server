@@ -37,13 +37,14 @@ export const getSchedulesByRoomIdHandler = asyncHandler(async (req: Request, res
 });
 
 export const createScheduleHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { room_id, subject, teacher, day_of_week, start_time, end_time } = req.body;
+  const { room_id, section_id, subject, teacher, day_of_week, start_time, end_time } = req.body;
   
   // Attach current authenticated user id as creator if available
   const created_by = req.user?.userId;
 
   const newSchedule = await SchedulesService.createSchedule({
     room_id,
+    section_id,
     subject,
     teacher,
     day_of_week,
@@ -62,10 +63,11 @@ export const createScheduleHandler = asyncHandler(async (req: Request, res: Resp
 
 export const updateScheduleHandler = asyncHandler(async (req: Request, res: Response) => {
   const id = getParam(req.params.id);
-  const { room_id, subject, teacher, day_of_week, start_time, end_time } = req.body;
+  const { room_id, section_id, subject, teacher, day_of_week, start_time, end_time } = req.body;
 
   const updatedSchedule = await SchedulesService.updateSchedule(id, {
     room_id,
+    section_id,
     subject,
     teacher,
     day_of_week,

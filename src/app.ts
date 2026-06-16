@@ -21,8 +21,15 @@ app.use(
       // Allow requests with no origin (like mobile apps or postman)
       if (!origin) return callback(null, true);
       
-      // In development, automatically allow all localhost ports
-      if (process.env.NODE_ENV === "development" && origin.startsWith("http://localhost:")) {
+      // In development, automatically allow all localhost ports, 127.0.0.1, and private LAN IP ranges
+      if (
+        process.env.NODE_ENV === "development" &&
+        (origin.startsWith("http://localhost:") ||
+          origin.startsWith("http://127.0.0.1:") ||
+          origin.startsWith("http://192.168.") ||
+          origin.startsWith("http://10.") ||
+          origin.startsWith("http://172."))
+      ) {
         return callback(null, true);
       }
       
@@ -59,7 +66,7 @@ app.get("/", (req, res) => {
  * GLOBAL API KEY PROTECTION
  * Every route registered below this line will require the x-api-key header
  */
-// app.use(apiKeyMiddleware);
+app.use(apiKeyMiddleware);
 
 /**
  * API VERSIONING
