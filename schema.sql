@@ -1,5 +1,5 @@
 -- PostgreSQL Database Schema for School Classrooms Schedule Management System
--- Use this script in pgAdmin 4 to initialize your database tables.
+-- Use this script in pgAdmin 4 or psql client to initialize your database tables.
 
 -- 1. Enable btree_gist extension (required for exclusion constraint validation)
 CREATE EXTENSION IF NOT EXISTS btree_gist;
@@ -34,13 +34,29 @@ CREATE TABLE IF NOT EXISTS sections (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- 5. Create Schedules Table
+-- 5. Create Instructors Table
+CREATE TABLE IF NOT EXISTS instructors (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Create Subjects Table
+CREATE TABLE IF NOT EXISTS subjects (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) UNIQUE NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- 6. Create Schedules Table (Normalized with Section, Instructor and Subject relations)
 CREATE TABLE IF NOT EXISTS schedules (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     room_id UUID REFERENCES rooms(id) ON DELETE CASCADE NOT NULL,
     section_id UUID REFERENCES sections(id) ON DELETE CASCADE NOT NULL,
-    subject VARCHAR(255) NOT NULL,
-    teacher VARCHAR(255) NOT NULL,
+    instructor_id UUID REFERENCES instructors(id) ON DELETE CASCADE NOT NULL,
+    subject_id UUID REFERENCES subjects(id) ON DELETE CASCADE NOT NULL,
     day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 1 AND 6), -- 1 = Monday, 6 = Saturday
     start_time TIME NOT NULL CHECK (start_time >= '07:00:00' AND start_time <= '21:00:00'),
     end_time TIME NOT NULL CHECK (end_time > start_time AND end_time <= '21:00:00'),
@@ -49,14 +65,17 @@ CREATE TABLE IF NOT EXISTS schedules (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- 5. Indexes for Query Optimization
+-- 7. Indexes for Query Optimization
 CREATE INDEX IF NOT EXISTS idx_schedules_room_day ON schedules(room_id, day_of_week);
 CREATE INDEX IF NOT EXISTS idx_schedules_section_day ON schedules(section_id, day_of_week);
+CREATE INDEX IF NOT EXISTS idx_schedules_instructor_day ON schedules(instructor_id, day_of_week);
+CREATE INDEX IF NOT EXISTS idx_schedules_subject_day ON schedules(subject_id, day_of_week);
 
--- 6. Default Seed Data
+-- 8. Default Seed Data
+
 -- Seed Default Admin User (Password: admin123)
 -- bcrypt hash for "admin123" with 10 salt rounds: $2b$10$7zB3c9wKx5XwY6V9tYJWeO9P3M9O1L/K.v5vK4h3i3e7a6.b6g/tC
--- Note: If this hash is not recognized, you can register a new admin user directly on the UI registration screen.
+-- Note: If you want to customize your admin credentials, you can register new users.
 INSERT INTO users (email, password_hash, first_name, last_name, role)
 VALUES (
     'admin@school.edu', 
@@ -79,4 +98,14 @@ ON CONFLICT (name) DO NOTHING;
 -- Seed Default Section
 INSERT INTO sections (name)
 VALUES ('Default Section')
+ON CONFLICT (name) DO NOTHING;
+
+-- Seed Default Instructor
+INSERT INTO instructors (name)
+VALUES ('Default Instructor')
+ON CONFLICT (name) DO NOTHING;
+
+-- Seed Default Subject
+INSERT INTO subjects (name)
+VALUES ('Default Subject')
 ON CONFLICT (name) DO NOTHING;

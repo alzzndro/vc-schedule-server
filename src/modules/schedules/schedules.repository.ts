@@ -5,10 +5,13 @@ export class SchedulesRepository {
   static async findAll(): Promise<Schedule[]> {
     const result = await pool.query(`
       SELECT s.id, s.room_id, r.name as room_name, s.section_id, sec.name as section_name,
-             s.subject, s.teacher, s.day_of_week, s.start_time, s.end_time, s.created_by, s.created_at, s.updated_at
+             s.instructor_id, inst.name as instructor_name, s.subject_id, subj.name as subject_name, s.day_of_week, s.start_time, s.end_time,
+             s.created_by, s.created_at, s.updated_at
       FROM schedules s
       JOIN rooms r ON s.room_id = r.id
       JOIN sections sec ON s.section_id = sec.id
+      JOIN instructors inst ON s.instructor_id = inst.id
+      JOIN subjects subj ON s.subject_id = subj.id
       ORDER BY s.day_of_week ASC, s.start_time ASC
     `);
     return result.rows;
@@ -17,10 +20,13 @@ export class SchedulesRepository {
   static async findById(id: string): Promise<Schedule | null> {
     const result = await pool.query(
       `SELECT s.id, s.room_id, r.name as room_name, s.section_id, sec.name as section_name,
-              s.subject, s.teacher, s.day_of_week, s.start_time, s.end_time, s.created_by, s.created_at, s.updated_at
+              s.instructor_id, inst.name as instructor_name, s.subject_id, subj.name as subject_name, s.day_of_week, s.start_time, s.end_time,
+              s.created_by, s.created_at, s.updated_at
        FROM schedules s
        JOIN rooms r ON s.room_id = r.id
        JOIN sections sec ON s.section_id = sec.id
+       JOIN instructors inst ON s.instructor_id = inst.id
+       JOIN subjects subj ON s.subject_id = subj.id
        WHERE s.id = $1`,
       [id]
     );
@@ -30,10 +36,13 @@ export class SchedulesRepository {
   static async findByRoomId(roomId: string): Promise<Schedule[]> {
     const result = await pool.query(
       `SELECT s.id, s.room_id, r.name as room_name, s.section_id, sec.name as section_name,
-              s.subject, s.teacher, s.day_of_week, s.start_time, s.end_time, s.created_by, s.created_at, s.updated_at
+              s.instructor_id, inst.name as instructor_name, s.subject_id, subj.name as subject_name, s.day_of_week, s.start_time, s.end_time,
+              s.created_by, s.created_at, s.updated_at
        FROM schedules s
        JOIN rooms r ON s.room_id = r.id
        JOIN sections sec ON s.section_id = sec.id
+       JOIN instructors inst ON s.instructor_id = inst.id
+       JOIN subjects subj ON s.subject_id = subj.id
        WHERE s.room_id = $1
        ORDER BY s.day_of_week ASC, s.start_time ASC`,
       [roomId]
@@ -47,15 +56,18 @@ export class SchedulesRepository {
     startTime: string,
     endTime: string,
     excludeScheduleId: string | null = null,
-    sectionId: string
+    sectionId: string,
+    instructorId: string
   ): Promise<Schedule[]> {
     const query = `
       SELECT s.id, s.room_id, r.name as room_name, s.section_id, sec.name as section_name,
-             s.subject, s.teacher, s.day_of_week, s.start_time, s.end_time
+             s.instructor_id, inst.name as instructor_name, s.subject_id, subj.name as subject_name, s.day_of_week, s.start_time, s.end_time
       FROM schedules s
       JOIN rooms r ON s.room_id = r.id
       JOIN sections sec ON s.section_id = sec.id
-      WHERE (s.room_id = $1 OR s.section_id = $6)
+      JOIN instructors inst ON s.instructor_id = inst.id
+      JOIN subjects subj ON s.subject_id = subj.id
+      WHERE (s.room_id = $1 OR s.section_id = $6 OR s.instructor_id = $7)
         AND s.day_of_week = $2
         AND (s.start_time < $4::TIME AND s.end_time > $3::TIME)
         AND ($5::UUID IS NULL OR s.id != $5::UUID)
@@ -67,17 +79,18 @@ export class SchedulesRepository {
       endTime,
       excludeScheduleId,
       sectionId,
+      instructorId,
     ]);
     return result.rows;
   }
 
   static async create(data: CreateScheduleInput): Promise<Schedule> {
-    const { room_id, section_id, subject, teacher, day_of_week, start_time, end_time, created_by } = data;
+    const { room_id, section_id, instructor_id, subject_id, day_of_week, start_time, end_time, created_by } = data;
     const result = await pool.query(
-      `INSERT INTO schedules (room_id, section_id, subject, teacher, day_of_week, start_time, end_time, created_by, updated_at)
+      `INSERT INTO schedules (room_id, section_id, instructor_id, subject_id, day_of_week, start_time, end_time, created_by, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-       RETURNING id, room_id, section_id, subject, teacher, day_of_week, start_time, end_time, created_by, created_at, updated_at`,
-      [room_id, section_id, subject, teacher, day_of_week, start_time, end_time, created_by]
+       RETURNING id, room_id, section_id, instructor_id, subject_id, day_of_week, start_time, end_time, created_by, created_at, updated_at`,
+      [room_id, section_id, instructor_id, subject_id, day_of_week, start_time, end_time, created_by]
     );
     return result.rows[0];
   }
@@ -95,13 +108,13 @@ export class SchedulesRepository {
       fields.push(`section_id = $${idx++}`);
       values.push(data.section_id);
     }
-    if (data.subject !== undefined) {
-      fields.push(`subject = $${idx++}`);
-      values.push(data.subject);
+    if (data.instructor_id !== undefined) {
+      fields.push(`instructor_id = $${idx++}`);
+      values.push(data.instructor_id);
     }
-    if (data.teacher !== undefined) {
-      fields.push(`teacher = $${idx++}`);
-      values.push(data.teacher);
+    if (data.subject_id !== undefined) {
+      fields.push(`subject_id = $${idx++}`);
+      values.push(data.subject_id);
     }
     if (data.day_of_week !== undefined) {
       fields.push(`day_of_week = $${idx++}`);
@@ -125,7 +138,7 @@ export class SchedulesRepository {
       UPDATE schedules
       SET ${fields.join(", ")}, updated_at = NOW()
       WHERE id = $${idx}
-      RETURNING id, room_id, section_id, subject, teacher, day_of_week, start_time, end_time, created_by, created_at, updated_at
+      RETURNING id, room_id, section_id, instructor_id, subject_id, day_of_week, start_time, end_time, created_by, created_at, updated_at
     `;
 
     const result = await pool.query(query, values);

@@ -2,6 +2,8 @@ import { SchedulesRepository } from "./schedules.repository.js";
 import { CreateScheduleInput, UpdateScheduleInput } from "./schedules.types.js";
 import { RoomsService } from "../rooms/rooms.service.js";
 import { SectionsService } from "../sections/sections.service.js";
+import { InstructorsService } from "../instructors/instructors.service.js";
+import { SubjectsService } from "../subjects/subjects.service.js";
 import { ApiError, notFound } from "../../utils/errors.js";
 
 // Utility to convert time string (HH:MM or HH:MM:SS) to minutes since midnight
@@ -41,11 +43,13 @@ export class SchedulesService {
   }
 
   static async createSchedule(data: CreateScheduleInput) {
-    const { room_id, section_id, subject, teacher, day_of_week, start_time, end_time } = data;
+    const { room_id, section_id, instructor_id, subject_id, day_of_week, start_time, end_time } = data;
 
-    // 1. Verify classroom and section exist
+    // 1. Verify classroom, section, instructor, and subject exist
     const room = await RoomsService.getRoomById(room_id);
     const section = await SectionsService.getSectionById(section_id);
+    const instructor = await InstructorsService.getInstructorById(instructor_id);
+    const subjectObj = await SubjectsService.getSubjectById(subject_id);
 
     // 2. Validate day of week (1=Mon, 6=Sat)
     if (day_of_week < 1 || day_of_week > 6) {
@@ -70,27 +74,34 @@ export class SchedulesService {
       throw new ApiError("Schedule start time must be before end time", 400);
     }
 
-    // 4. Conflict detection: Check for overlapping schedules in the same room OR same section on the same day
+    // 4. Conflict detection: Check for overlapping schedules in the same room OR same section OR same instructor on the same day
     const conflicts = await SchedulesRepository.findOverlapping(
       room_id,
       day_of_week,
       start_time,
       end_time,
       null,
-      section_id
+      section_id,
+      instructor_id
     );
 
     if (conflicts.length > 0) {
       for (const conflict of conflicts) {
         if (conflict.room_id === room_id) {
           throw new ApiError(
-            `Schedule conflict: Classroom '${room.name}' is already booked for '${conflict.subject}' (${formatTimeStr(conflict.start_time)} - ${formatTimeStr(conflict.end_time)}) by teacher '${conflict.teacher}'`,
+            `Schedule conflict: Classroom '${room.name}' is already booked for '${conflict.subject_name}' (${formatTimeStr(conflict.start_time)} - ${formatTimeStr(conflict.end_time)}) by instructor '${conflict.instructor_name}'`,
             400
           );
         }
         if (conflict.section_id === section_id) {
           throw new ApiError(
-            `Section conflict: Section '${section.name}' is already booked in ${conflict.room_name} for '${conflict.subject}' (${formatTimeStr(conflict.start_time)} - ${formatTimeStr(conflict.end_time)})`,
+            `Section conflict: Section '${section.name}' is already booked in ${conflict.room_name} for '${conflict.subject_name}' (${formatTimeStr(conflict.start_time)} - ${formatTimeStr(conflict.end_time)})`,
+            400
+          );
+        }
+        if (conflict.instructor_id === instructor_id) {
+          throw new ApiError(
+            `Instructor conflict: Instructor '${instructor.name}' is already booked in ${conflict.room_name} for '${conflict.subject_name}' (${formatTimeStr(conflict.start_time)} - ${formatTimeStr(conflict.end_time)})`,
             400
           );
         }
@@ -107,6 +118,7 @@ export class SchedulesService {
     // Determine final values after update
     const finalRoomId = data.room_id !== undefined ? data.room_id : existingSchedule.room_id;
     const finalSectionId = data.section_id !== undefined ? data.section_id : existingSchedule.section_id;
+    const finalInstructorId = data.instructor_id !== undefined ? data.instructor_id : existingSchedule.instructor_id;
     const finalDayOfWeek = data.day_of_week !== undefined ? data.day_of_week : existingSchedule.day_of_week;
     const finalStartTime = data.start_time !== undefined ? data.start_time : existingSchedule.start_time;
     const finalEndTime = data.end_time !== undefined ? data.end_time : existingSchedule.end_time;
@@ -123,6 +135,18 @@ export class SchedulesService {
     if (data.section_id !== undefined && data.section_id !== existingSchedule.section_id) {
       const section = await SectionsService.getSectionById(data.section_id);
       sectionName = section.name;
+    }
+
+    // Validate instructor if changed
+    let instructorName = existingSchedule.instructor_name;
+    if (data.instructor_id !== undefined && data.instructor_id !== existingSchedule.instructor_id) {
+      const instructor = await InstructorsService.getInstructorById(data.instructor_id);
+      instructorName = instructor.name;
+    }
+
+    // Validate subject if changed
+    if (data.subject_id !== undefined && data.subject_id !== existingSchedule.subject_id) {
+      await SubjectsService.getSubjectById(data.subject_id);
     }
 
     // Validate day of week
@@ -155,20 +179,27 @@ export class SchedulesService {
       finalStartTime,
       finalEndTime,
       id,
-      finalSectionId
+      finalSectionId,
+      finalInstructorId
     );
 
     if (conflicts.length > 0) {
       for (const conflict of conflicts) {
         if (conflict.room_id === finalRoomId) {
           throw new ApiError(
-            `Schedule conflict: Classroom '${roomName}' is already booked for '${conflict.subject}' (${formatTimeStr(conflict.start_time)} - ${formatTimeStr(conflict.end_time)}) by teacher '${conflict.teacher}'`,
+            `Schedule conflict: Classroom '${roomName}' is already booked for '${conflict.subject_name}' (${formatTimeStr(conflict.start_time)} - ${formatTimeStr(conflict.end_time)}) by instructor '${conflict.instructor_name}'`,
             400
           );
         }
         if (conflict.section_id === finalSectionId) {
           throw new ApiError(
-            `Section conflict: Section '${sectionName}' is already booked in ${conflict.room_name} for '${conflict.subject}' (${formatTimeStr(conflict.start_time)} - ${formatTimeStr(conflict.end_time)})`,
+            `Section conflict: Section '${sectionName}' is already booked in ${conflict.room_name} for '${conflict.subject_name}' (${formatTimeStr(conflict.start_time)} - ${formatTimeStr(conflict.end_time)})`,
+            400
+          );
+        }
+        if (conflict.instructor_id === finalInstructorId) {
+          throw new ApiError(
+            `Instructor conflict: Instructor '${instructorName}' is already booked in ${conflict.room_name} for '${conflict.subject_name}' (${formatTimeStr(conflict.start_time)} - ${formatTimeStr(conflict.end_time)})`,
             400
           );
         }
