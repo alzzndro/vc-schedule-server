@@ -33,6 +33,7 @@ services:
 
     environment:
       NODE_ENV: production
+      DB_HOST: postgres
 
     ports:
       - "3023:3023"
